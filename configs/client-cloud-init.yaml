@@ -1,0 +1,50 @@
+#cloud-config
+
+hostname: client-node
+
+apt:
+  primary:
+    - arches: [default]
+      uri: http://ubuntu.mirror.globo.tech/ubuntu/
+
+packages:
+  - qemu-guest-agent
+  - curl
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: "1234" 
+
+network:
+  version: 2
+  ethernets:
+    all:
+      match:
+        name: "e*"
+      dhcp4: true
+      
+write_files:
+  - path: /usr/local/bin/client-loop.sh
+    permissions: '0755'
+    content: |
+
+      #!/bin/bash
+      SERVER_IP="$1"
+
+      echo "Starting client traffic to $SERVER_IP..."
+
+      while true; do
+        curl --connect-timeout 2 -s http://$SERVER_IP >/dev/null
+        sleep 1
+      done
+
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+
+  # Start traffic loop directly
+  - nohup /usr/local/bin/client-loop.sh SERVER_IP_PLACEHOLDER > /var/log/client.log 2>&1 &
+  

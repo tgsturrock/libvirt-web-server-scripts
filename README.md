@@ -6,20 +6,87 @@ The environment is composed of a host machine, a pre-configured Nginx web server
 
 ### Features
 
-* **Infrastructure as Code (IaC)**: The entire lifecycle of the virtual environment—from VM creation to network configuration and application-level actions—is defined and executed through a single script. This approach provides a consistent, version-controlled blueprint for the infrastructure.
-* **Automated VM Lifecycle Management**: The main script orchestrates the full lifecycle of client VMs, including cloning from a base image, startup, graceful shutdown, and complete cleanup. This eliminates manual configuration and reduces the risk of human error.
+* **Infrastructure as Code (IaC)**: The entire lifecycle of the virtual environment—from VM creation to network configuration and application-level actions—is defined and executed (orchestrate.sh, setup.sh, clean.sh). This approach provides a consistent, version-controlled blueprint for the infrastructure.
+* **Automated VM Lifecycle Management**: The orchestrate.sh script manages the full lifecycle of client VMs, including cloning from a base image, startup, graceful shutdown, and complete cleanup. This eliminates manual configuration and reduces the risk of human error.
 * **Dynamic Client Provisioning**: The program automatically provisions and connects up to three client VMs to the Nginx server in a staggered, controlled manner.
-* **Automated Connection Verification**: The script leverages SSH to remotely monitor the Nginx server's `access.log` file. By parsing the log, it automatically verifies that each client successfully connected to the server, providing a critical layer of automated quality assurance.
+* **Automated Traffic Verification**: The script leverages SSH to remotely monitor the Nginx server's `access.log` file. By parsing the log, it automatically verifies that each client successfully connected to the server, providing a critical layer of automated quality assurance.
 * **Complete Environment Teardown**: After the verification process, the script systematically shuts down and deletes all dynamically created resources, ensuring no lingering VMs or disk images are left behind.
+
+### Scripts
+
+* **setup.sh** - Prepares host environment and base images for client provisioning
+* **orchestrate.sh** - Main orchestration script that dynamically creates clients, injects server IP, starts traffic loops, monitors server logs, and shuts down clients
+* **clean.sh** - Cleans up all VMs, disk images, and temporary files
 
 ### How It Works
 
-The project relies on a shell script that acts as the primary orchestrator. It uses `libvirt` command-line tools (`virt-clone`, `virsh`) and SSH for remote communication to the server VM.
+The project relies on shell scripts that act as the primary orchestrators. They use libvirt command-line tools (virt-clone, virsh, qemu-img) and SSH for communication with the server VM.
 
-1.  **Preparation**: The environment requires a pre-configured server VM running Nginx and a base client VM image. The host machine is set up with SSH access to the server.
-2.  **Provisioning**: The script enters a loop that repeats the full deployment and verification cycle three times. Within each cycle, it dynamically clones three client VMs from the base image and starts them.
-3.  **Execution**: As each client VM boots, it automatically executes a pre-configured command to request a page from the Nginx server.
-4.  **Verification**: The host script remotely accesses the server's `access.log` to confirm that all three clients have successfully connected.
-5.  **De-provisioning**: Upon successful verification, the script initiates a graceful shutdown of the client VMs one by one, followed by the complete deletion of their corresponding disk images and configurations.
+**1. Setup (setup.sh)**
+   * Installs required dependencies (qemu, libvirt, virtinst, openssh-client, etc.)
+   * Prepares a shared log directory
+   * Downloads a base Ubuntu image for server and client VMs
+   * Creates the server VM running Nginx and a client base VM for cloning
+  
+**2. Orchestration (orchestrate.sh)**
+   * Dynamically detects the server IP
+   * Clones multiple client VMs from the client base image
+   * Each client VM continuously sends HTTP requests to the server
+   * The script monitors the server’s access.log to verify client connections
+   * After the cycle, clients are gracefully shut down and their disks removed
 
-This project showcases the ability to manage complex virtual environments in an automated and repeatable manner, a key skill for DevOps, cloud engineering, and system administration roles.
+**2. Cleanup (clean.sh)**
+   * Stops and removes all VMs (server, client base, cloned clients)
+   * Deletes all .qcow2 disk images
+   * Resets the virtual network and DHCP leases
+   * Clears the host log directory, preparing for a fresh run
+
+### Requirements
+
+* Host machine with libvirt/KVM.
+* Ubuntu 20.04 base images for server and clients.
+* qemu-img, virt-install, virsh, SSH.
+* Bash shell.
+
+### Example Workflow
+ ```bash
+1. **Prepare the environment**  
+   ./setup.sh
+   
+2. **Run the orchestration**  
+   ./orchestrate.sh
+   
+3. **Cleanup the environment**  
+   ./clean.sh
+ ```
+### Project Structure
+
+ ```bash
+.
+├── setup.sh           # Prepares environment, downloads images, creates server & client-base
+├── orchestrate.sh     # Clones clients, generates traffic, verifies logs
+├── clean.sh           # Deletes VMs, images, resets network, clears logs
+├── configs/
+│   ├── server-cloud-init.yaml
+│   └── client-cloud-init.yaml
+└── host_logs/
+    └── access.log     # Shared log file between server & host
+ ```
+ 
+### Configuration
+* orchestrate.sh – Adjust the number of clients and cycles:
+ ```bash
+NUM_CLIENTS=3      # Number of clients per iteration
+CYCLES=1           # Number of orchestration cycles
+TRAFFIC_DELAY=5    # Time to allow traffic to generate
+ ```
+* Cloud-init files
+   * `server-cloud-init.yaml` – Configures Nginx server and shared log mount
+   * `client-cloud-init.yaml` – Configures clients to run traffic loop
+
+### Notes
+Designed for Ubuntu 20.04 hosts using libvirt/KVM
+Requires sudo access for VM creation and network management
+Can scale by adjusting NUM_CLIENTS and CYCLES in orchestrate.sh
+
+This project highlights automated VM orchestration, dynamic client provisioning, and server verification, demonstrating practical skills for DevOps, cloud engineering, and systems administration.

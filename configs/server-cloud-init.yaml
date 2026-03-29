@@ -1,0 +1,57 @@
+#cloud-config
+
+hostname: server-node
+
+apt:
+  primary:
+    - arches: [default]
+      uri: http://ubuntu.mirror.globo.tech/ubuntu/
+
+packages:
+  - nginx
+  - qemu-guest-agent
+  - curl
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: "1234" 
+
+ssh_pwauth: true    # allow password login for ssh
+
+
+runcmd:
+  # Start guest agent
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+
+  # Create mount point
+  - mkdir -p /mnt/shared_logs
+
+  # Add persistent mount if not already present (Assures mount every boot)
+  - grep -q shared_logs /etc/fstab || echo "shared_logs /mnt/shared_logs virtiofs defaults 0 0" >> /etc/fstab
+
+  # Mount everything in /etc/fstab
+  - mount -a
+
+  # Ensure log file exists
+  - touch /mnt/shared_logs/access.log
+  - chmod 666 /mnt/shared_logs/access.log
+
+  # Configure nginx
+  - |
+    cat <<EOF > /etc/nginx/sites-available/default
+    server {
+        listen 80 default_server;
+        access_log /mnt/shared_logs/access.log;
+
+        location / {
+            return 200 "OK\n";
+        }
+    }
+    EOF
+
+  # Restart nginx
+  - systemctl restart nginx
